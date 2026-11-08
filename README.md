@@ -22,6 +22,8 @@ It reads your live game (your champion, gold, items, and the enemy team's champi
 
 Your style is inferred from your keystone rune (Conqueror → bruiser, Grasp / Aftershock → tank, Electrocute, Comet… → damage), then from the champion's role. You can force it.
 
+**Gold gap:** the output line shows your team's item-value gap. When your team is 3k+ behind, survivability weighs at least 25% of the score (50% at 6k+), so items like Zhonya's can come up even in damage style. Zhonya's stasis is modelled as a flat +25% effective HP (an estimate, not Riot data).
+
 **Not modelled:** enemy runes and stat shards; Baron / Elder are flagged but not in the damage calculation (holders are estimated from kill events); Dark Seal stacks aren't exposed by the API. Every number comes from the live API, Data Dragon, or the script's own calculation; nothing is made up.
 
 ## Install

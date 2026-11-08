@@ -338,6 +338,12 @@ def analyse(game, champs, items_db, version):
         },
         "enemies": [],
         "objectives": obj,
+        # Valeur des items par équipe (l'API ne donne pas l'or total des autres joueurs)
+        "team_gold": {side: sum(items_db[i["itemID"]]["price"] * max(1, i.get("count", 1))
+                                for p in game["allPlayers"]
+                                if (p.get("team") == me.get("team")) == (side == "ally")
+                                for i in p.get("items", []) if i.get("itemID") in items_db)
+                      for side in ("ally", "enemy")},
         "warnings": ["Runes, shards et passifs à stacks ignorés : résistances ennemies légèrement "
                      "sous-estimées. Drakes Montagne ennemis comptés ; Baron / Ancien affichés, "
                      "pas dans le calcul (porteurs estimés d'après les kills)."],
@@ -718,6 +724,8 @@ PRIMARY = {"ap": {"ap", "magic_pen_flat", "magic_pen_pct"},
            "ad": {"ad", "lethality", "armor_pen_pct", "crit"}}
 DEFENSE = {"hp", "armor", "mr"}
 STYLE_LABEL = {"degats": "dégâts", "bruiser": "bruiser", "tank": "tank"}
+# Retard en valeur d'items (PO) -> poids minimum de la survie dans le score (estimation, à ajuster)
+BEHIND_TANK = [(6000, 0.5), (3000, 0.25)]
 
 
 def pick_style(ap_live, champ, meraki, owned, items_db, style_arg, dmg_arg):
@@ -798,12 +806,14 @@ def meta_items(champ, live_position, lane_arg):
 def ehp(me, share):
     """PV effectifs face à un ennemi dont `share` des dégâts sont physiques.
     Passifs défensifs en combat : Jak'Sho (résistances bonus), Force de la nature (RM), Rookern (bouclier)."""
-    armor, mr, shield = me["armor"], me["mr"], 0.0
+    armor, mr, shield, stasis = me["armor"], me["mr"], 0.0, 0.0
     for e in (e for iid in me["items"] for e in item_effects(iid) if e["type"] == "def"):
         armor += e.get("bonus_resist_mult", 0) * me["bonus_armor"]
         mr += e.get("bonus_resist_mult", 0) * me["bonus_mr"] + e.get("mr", 0)
         shield += e.get("magic_shield_hp", 0) * me["hp"]
-    return share * me["hp"] * (1 + armor / 100) + (1 - share) * (me["hp"] + shield) * (1 + mr / 100)
+        stasis += e.get("stasis_ehp_pct", 0)  # Zhonya : forfait, voir passifs.json
+    return (1 + stasis) * (share * me["hp"] * (1 + armor / 100)
+                           + (1 - share) * (me["hp"] + shield) * (1 + mr / 100))
 
 
 def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane_arg=None,
@@ -835,6 +845,11 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     me["item_hp"] = item_totals([{"itemID": i} for i in owned], items_db)[0].get("hp", 0)
     style, dmg, why = pick_style(ap_live, champ, meraki, owned, items_db, style_arg, dmg_arg)
     w_dmg, w_tank = STYLE_WEIGHTS[style]
+    # Équipe en retard : la survie entre dans le score, même en style dégâts
+    gap = result["team_gold"]["ally"] - result["team_gold"]["enemy"]
+    behind = next((w for seuil, w in BEHIND_TANK if -gap >= seuil), 0.0)
+    if behind > w_tank:
+        w_dmg, w_tank = 1 - behind, behind
 
     # Candidats selon le style : un item qui n'apporte rien à ton style ne sort pas
     offense = OFFENSE[dmg]
@@ -915,7 +930,7 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     gold_after = gold + (inv["sell"]["sell"] if inv["sell"] else 0)
     now = buy_now(top["id"], owned, gold_after, items_db) if gold_after < top["cost"] else None
     return {"top": scored[:3], "buy_now": now, "gold": gold, "gold_after": gold_after, "inv": inv,
-            "objectives": result["objectives"], "lines": lines,
+            "objectives": result["objectives"], "lines": lines, "gap": gap, "w": (w_dmg, w_tank),
             "style": style, "dmg": dmg, "why": why, "meta_note": meta_note, "spell_onhit": spell_onhit,
             "meta_patch": meta["patch"] if meta else None,
             "ignored_units": ignored_units, "n_autos": n_autos,
@@ -929,9 +944,10 @@ def fmt_reco(r):
     # « surtout contre » : les ennemis où l'item rapporte nettement plus que la moyenne
     strong = sorted((c for c, g in t["per_enemy"].items() if g >= 1.2 * t["gain"]),
                     key=lambda c: -t["per_enemy"][c])[:2]
-    if r["style"] == "degats":
+    w_dmg, w_tank = r["w"]
+    if not w_tank:
         what = f"+{t['gain_dmg']:.0%} de dégâts sur l'équipe"
-    elif r["style"] == "tank":
+    elif w_dmg <= 0.25:
         what = f"+{t['gain_tank']:.0%} de tankiness face à leur équipe"
         if t["gain_dmg"] >= 0.05:
             what += f" (+{t['gain_dmg']:.0%} de dégâts)"
@@ -948,7 +964,9 @@ def fmt_reco(r):
         line += f" (il te manque {t['cost'] - r['gold_after']} PO)"
     meta = r["meta_note"] if r["meta_note"].startswith("méta ") and ":" not in r["meta_note"] \
         else "sans méta"
-    line += f" [{STYLE_LABEL[r['style']]} {r['dmg'].upper()} · {r['why']} · {meta}]"
+    gap = f"{'+' if r['gap'] >= 0 else '−'}{abs(r['gap']) / 1000:.1f}k PO"
+    survie = f", survie {w_tank:.0%}" if w_tank > STYLE_WEIGHTS[r["style"]][1] else ""
+    line += f" [{STYLE_LABEL[r['style']]} {r['dmg'].upper()} · {r['why']} · {meta} · équipe {gap}{survie}]"
     # Buffs ennemis qui changent le fight maintenant
     for b in r["objectives"]["enemy"]["timed"]:
         line += f" ⚠ {b['nom']} ennemi encore {b['reste'] // 60}:{b['reste'] % 60:02d} ({b['joueurs']} joueurs)"
@@ -977,7 +995,7 @@ def fmt_inventory(inv):
 def fmt_reco_details(r):
     if "error" in r:
         return ""
-    wd, wt = STYLE_WEIGHTS[r["style"]]
+    wd, wt = r["w"]
     L = ["\n" + fmt_objectives(r["objectives"]), fmt_inventory(r["inv"]),
          f"\nSTYLE : {STYLE_LABEL[r['style']]} {r['dmg'].upper()} ({r['why']}) · score = "
          f"{wd:.0%} dégâts + {wt:.0%} tankiness (PV effectifs face au mix AD/AP adverse)",

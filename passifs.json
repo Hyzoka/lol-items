@@ -4,7 +4,8 @@
   "_doc": "Sorts qui appliquent les effets à l'impact : nombre de coups par cible sur un combo. Efficacité lue dans Meraki (« On-Hit Damage Effectiveness »).",
   "Katarina": {"R": 15}
  },
- "3089": {"name": "Rabadon", "src": "dd", "effects": [{"type": "ap_mult", "value": 0.30}]},
+ "3157": {"name": "Sablier de Zhonya", "src": "forfait", "_note": "actif (stase 2,5 s) : forfait estimé de +25 % de PV effectifs face à un burst, pas une donnée Riot", "effects": [{"type": "def", "stasis_ehp_pct": 0.25}]},
+"3089": {"name": "Rabadon", "src": "dd", "effects": [{"type": "ap_mult", "value": 0.30}]},
 
  "3115": {"name": "Dent de Nashor", "src": "meraki", "effects": [{"type": "onhit", "dmg": "magic", "flat": 15, "ap": 0.15}]},
  "3302": {"name": "Terminus", "src": "meraki", "effects": [{"type": "onhit", "dmg": "magic", "flat": 30}]},
