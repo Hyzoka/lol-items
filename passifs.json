@@ -1,0 +1,42 @@
+{
+ "_doc": "Passifs d'items modélisés par lol-items (V2d). Valeurs : Data Dragon 16.22 quand le chiffre est dans le texte (src: dd), sinon Meraki (src: meraki, peut dater). Types d'effet : ap_mult, onhit, spellblade, every_n, once, amp, shred, stat_from, def. Les moyennes (amp, shred, def) supposent un combat de ~3-5 s. Modifiable à la main : le script relit ce fichier à chaque lancement.",
+ "_champion_onhit": {
+  "_doc": "Sorts qui appliquent les effets à l'impact : nombre de coups par cible sur un combo. Efficacité lue dans Meraki (« On-Hit Damage Effectiveness »).",
+  "Katarina": {"R": 15}
+ },
+ "3089": {"name": "Rabadon", "src": "dd", "effects": [{"type": "ap_mult", "value": 0.30}]},
+
+ "3115": {"name": "Dent de Nashor", "src": "meraki", "effects": [{"type": "onhit", "dmg": "magic", "flat": 15, "ap": 0.15}]},
+ "3302": {"name": "Terminus", "src": "meraki", "effects": [{"type": "onhit", "dmg": "magic", "flat": 30}]},
+ "3091": {"name": "Fin de l'esprit", "src": "meraki", "effects": [{"type": "onhit", "dmg": "magic", "flat": 45}]},
+ "3124": {"name": "Ouragan de Guinsoo", "src": "dd", "effects": [{"type": "onhit", "dmg": "magic", "flat": 30}]},
+ "3153": {"name": "Lame du roi déchu", "src": "meraki", "effects": [{"type": "onhit", "dmg": "phys", "target_current_hp": 0.09, "ranged": {"target_current_hp": 0.06}}]},
+ "3748": {"name": "Hydre titanesque", "src": "meraki", "effects": [{"type": "onhit", "dmg": "phys", "hp": 0.01, "ranged": {"hp": 0.005}}]},
+
+ "3100": {"name": "Fléau de liche", "src": "meraki", "effects": [{"type": "spellblade", "dmg": "magic", "base_ad": 0.75, "ap": 0.40}]},
+ "3078": {"name": "Trinité", "src": "meraki", "effects": [{"type": "spellblade", "dmg": "phys", "base_ad": 2.00}]},
+ "3508": {"name": "Faucheuse d'essence", "src": "meraki", "effects": [{"type": "spellblade", "dmg": "phys", "base_ad": 1.25}]},
+ "6662": {"name": "Gantelet givrant", "src": "meraki", "effects": [{"type": "spellblade", "dmg": "phys", "base_ad": 1.50}]},
+
+ "6672": {"name": "Tueur de krakens", "src": "meraki", "effects": [{"type": "every_n", "n": 3, "dmg": "phys", "flat_lvl": [150, 200, 9, 19], "ranged_mult": 0.8, "missing_hp_avg": 1.25}]},
+
+ "6653": {"name": "Tourment de Liandry", "src": "dd", "effects": [{"type": "once", "dmg": "magic", "target_hp": 0.06}, {"type": "amp", "value": 0.04}]},
+ "2503": {"name": "Torche de feu noir", "src": "meraki", "effects": [{"type": "once", "dmg": "magic", "flat": 60, "ap": 0.06}]},
+ "4646": {"name": "Onde orageuse", "src": "meraki", "effects": [{"type": "once", "dmg": "magic", "flat": 125, "ap": 0.10}]},
+ "6655": {"name": "Écho de Luden", "src": "meraki+dd", "effects": [{"type": "once", "dmg": "magic", "flat": 150, "ap": 0.10}]},
+ "3068": {"name": "Égide solaire", "src": "meraki", "effects": [{"type": "once", "dmg": "magic", "flat": 60, "bonus_hp": 0.03}]},
+ "6664": {"name": "Radiance creuse", "src": "meraki", "effects": [{"type": "once", "dmg": "magic", "flat": 45, "bonus_hp": 0.03}]},
+
+ "4645": {"name": "Flamme-ombre", "src": "dd", "effects": [{"type": "amp", "value": 0.07, "dmg": ["magic", "true"]}]},
+ "3036": {"name": "Salutations de Dominik", "src": "dd", "effects": [{"type": "amp", "per_100_bonus_hp": 0.01, "max": 0.15}]},
+ "6676": {"name": "Collecteur", "src": "dd", "effects": [{"type": "amp", "value": 0.05}]},
+ "4633": {"name": "Faiseur de failles", "src": "meraki", "effects": [{"type": "amp", "value": 0.06}, {"type": "stat_from", "stat": "ap", "from": "bonus_hp", "ratio": 0.02}]},
+ "3161": {"name": "Lance de Shojin", "src": "meraki", "effects": [{"type": "amp", "value": 0.08, "spells_only": true}]},
+ "4628": {"name": "Focalisateur d'horizon", "src": "meraki", "effects": [{"type": "amp", "value": 0.05}]},
+ "3071": {"name": "Couperet noir", "src": "dd", "effects": [{"type": "shred", "armor": 0.18}]},
+
+ "6665": {"name": "Jak'Sho", "src": "meraki", "effects": [{"type": "def", "bonus_resist_mult": 0.20}]},
+ "2504": {"name": "Rookern kaénique", "src": "meraki", "effects": [{"type": "def", "magic_shield_hp": 0.15}]},
+ "4401": {"name": "Force de la nature", "src": "dd", "effects": [{"type": "def", "mr": 35}]},
+ "3083": {"name": "Armure de Warmog", "src": "meraki", "effects": [{"type": "stat_from", "stat": "hp", "from": "item_hp", "ratio": 0.12}]}
+}

@@ -1,0 +1,63 @@
+{
+ "activePlayer": {
+  "riotId": "Player#EUW",
+  "riotIdGameName": "Player",
+  "summonerName": "Player#EUW",
+  "level": 11,
+  "currentGold": 1450.0,
+  "abilities": {
+   "Passive": {"displayName": "Murmure", "id": "JhinPassive"},
+   "Q": {"abilityLevel": 5, "displayName": "Grenade dansante", "id": "JhinQ"},
+   "W": {"abilityLevel": 2, "displayName": "Floraison mortelle", "id": "JhinW"},
+   "E": {"abilityLevel": 3, "displayName": "Public captif", "id": "JhinE"},
+   "R": {"abilityLevel": 1, "displayName": "Rappel", "id": "JhinR"}
+  },
+  "championStats": {
+   "abilityHaste": 0.0, "abilityPower": 0.0, "armor": 65.2, "armorPenetrationFlat": 0.0,
+   "armorPenetrationPercent": 1.0, "attackDamage": 268.0, "attackRange": 550.0, "attackSpeed": 0.625,
+   "bonusArmorPenetrationPercent": 1.0, "bonusMagicPenetrationPercent": 1.0, "critChance": 0.5,
+   "critDamage": 215.0, "currentHealth": 1210.0, "lifeSteal": 0.0, "magicLethality": 0.0,
+   "magicPenetrationFlat": 0.0, "magicPenetrationPercent": 1.0, "magicResist": 42.7,
+   "maxHealth": 1594.0, "moveSpeed": 385.0, "physicalLethality": 10.0, "resourceMax": 800.0
+  }
+ },
+ "allPlayers": [
+  {"championName": "Jhin", "rawChampionName": "game_character_displayname_Jhin", "riotId": "Player#EUW",
+   "riotIdGameName": "Player", "summonerName": "Player#EUW", "team": "ORDER", "level": 11, "position": "BOTTOM",
+   "isDead": false, "scores": {"kills": 5, "deaths": 2, "assists": 4, "creepScore": 142, "wardScore": 9},
+   "items": [{"itemID": 6676, "displayName": "Percepteur", "count": 1, "slot": 0},
+             {"itemID": 3009, "displayName": "Bottes de rapidité", "count": 1, "slot": 1},
+             {"itemID": 3031, "displayName": "Lame d'infini", "count": 1, "slot": 2}]},
+  {"championName": "Ahri", "rawChampionName": "game_character_displayname_Ahri", "riotId": "Allie#EUW",
+   "summonerName": "Allie#EUW", "team": "ORDER", "level": 11, "position": "MIDDLE",
+   "scores": {"kills": 3, "deaths": 3, "assists": 5, "creepScore": 150}, "items": []},
+  {"championName": "Malphite", "rawChampionName": "game_character_displayname_Malphite", "riotId": "Roc#EUW",
+   "summonerName": "Roc#EUW", "team": "CHAOS", "level": 12, "position": "TOP",
+   "scores": {"kills": 1, "deaths": 2, "assists": 6, "creepScore": 160},
+   "items": [{"itemID": 3075, "displayName": "Cotte épineuse", "count": 1, "slot": 0},
+             {"itemID": 3047, "displayName": "Coques en acier renforcé", "count": 1, "slot": 1},
+             {"itemID": 3068, "displayName": "Cape solaire", "count": 1, "slot": 2}]},
+  {"championName": "Sejuani", "rawChampionName": "game_character_displayname_Sejuani", "riotId": "Sanglier#EUW",
+   "summonerName": "Sanglier#EUW", "team": "CHAOS", "level": 11, "position": "JUNGLE",
+   "scores": {"kills": 2, "deaths": 3, "assists": 7, "creepScore": 110},
+   "items": [{"itemID": 3068, "displayName": "Cape solaire", "count": 1, "slot": 0},
+             {"itemID": 2504, "displayName": "Rookern kaénique", "count": 1, "slot": 1},
+             {"itemID": 3111, "displayName": "Sandales de mercure", "count": 1, "slot": 2}]},
+  {"championName": "Orianna", "rawChampionName": "game_character_displayname_Orianna", "riotId": "Balle#EUW",
+   "summonerName": "Balle#EUW", "team": "CHAOS", "level": 11, "position": "MIDDLE",
+   "scores": {"kills": 4, "deaths": 2, "assists": 3, "creepScore": 155},
+   "items": [{"itemID": 3089, "displayName": "Coiffe de Rabadon", "count": 1, "slot": 0},
+             {"itemID": 3020, "displayName": "Chaussures de sorcier", "count": 1, "slot": 1}]},
+  {"championName": "Caitlyn", "rawChampionName": "game_character_displayname_Caitlyn", "riotId": "Piltie#EUW",
+   "summonerName": "Piltie#EUW", "team": "CHAOS", "level": 10, "position": "BOTTOM",
+   "scores": {"kills": 3, "deaths": 4, "assists": 1, "creepScore": 130},
+   "items": [{"itemID": 3031, "displayName": "Lame d'infini", "count": 1, "slot": 0},
+             {"itemID": 3006, "displayName": "Jambières du berserker", "count": 1, "slot": 1}]},
+  {"championName": "Leona", "rawChampionName": "game_character_displayname_Leona", "riotId": "Soleil#EUW",
+   "summonerName": "Soleil#EUW", "team": "CHAOS", "level": 9, "position": "UTILITY",
+   "scores": {"kills": 0, "deaths": 3, "assists": 6, "creepScore": 20},
+   "items": [{"itemID": 3190, "displayName": "Médaillon de l'Iron Solari", "count": 1, "slot": 0},
+             {"itemID": 3047, "displayName": "Coques en acier renforcé", "count": 1, "slot": 1}]}
+ ],
+ "gameData": {"gameMode": "CLASSIC", "gameTime": 1312.4, "mapNumber": 11}
+}
