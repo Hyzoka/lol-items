@@ -17,10 +17,12 @@ It reads your live game (your champion, gold, items, and the enemy team's champi
 - **Meraki Analytics** (community): spell ratios for the combo model.
 - **OP.GG** (unofficial API): items actually played on your champion in your lane, used as a meta filter (cached 24 h). Disable with `--no-meta`.
 - `passifs.json`: hand-modelled passives of ~30 key items (values + source). Fix by hand if a patch changes a value.
+- `buffs.json`: dragon, Baron and Elder buffs (wiki values). Objectives are read from the live game events: enemy Mountain drakes are applied to enemy resistances, an active enemy Baron / Elder is flagged in the output line.
+- **Inventory check**: each item gets a keep / sellable verdict with its sell price. When you're out of slots, or late game (3+ completed items), the line tells you what to sell first (potions → control ward → starters → Dark Seal last), and the sell gold counts toward the next purchase. Ask "check my stuff" (or use `--details`) to see the full verdict.
 
 Your style is inferred from your keystone rune (Conqueror → bruiser, Grasp / Aftershock → tank, Electrocute, Comet… → damage), then from the champion's role. You can force it.
 
-**Not modelled:** runes, stat shards, dragon and Baron buffs. Every number comes from the live API, Data Dragon, or the script's own calculation; nothing is made up.
+**Not modelled:** enemy runes and stat shards; Baron / Elder are flagged but not in the damage calculation (holders are estimated from kill events); Dark Seal stacks aren't exposed by the API. Every number comes from the live API, Data Dragon, or the script's own calculation; nothing is made up.
 
 ## Install
 

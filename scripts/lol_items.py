@@ -124,6 +124,7 @@ def build_items(items_en, items_fr):
             "id": int(iid),
             "name": items_fr.get(iid, it)["name"],
             "price": it["gold"]["total"],
+            "sell": it["gold"].get("sell", 0),
             "purchasable": it["gold"]["purchasable"],
             "into": [int(x) for x in it.get("into", []) if len(x) <= 4],
             "from": [int(x) for x in it.get("from", [])],
@@ -250,15 +251,67 @@ def find_me(game):
     return None
 
 
+def objectives(game, my_team):
+    """Drakes, âme, Baron et Ancien de chaque équipe, d'après les événements de l'API live.
+    Baron / Ancien : actifs pendant leur durée, perdus à la mort (morts lues dans les kills)."""
+    name_team, names = {}, {}  # pseudo -> équipe ; joueur -> ses pseudos
+    for i, p in enumerate(game["allPlayers"]):
+        names[i] = {n.split("#")[0] for n in (p.get("riotIdGameName"), p.get("summonerName"),
+                                              p.get("riotId")) if n}
+        for n in names[i]:
+            name_team[n] = p.get("team")
+    now = game.get("gameData", {}).get("gameTime", 0)
+    events = game.get("events", {}).get("Events", [])
+    deaths = [(e["EventTime"], e.get("VictimName", "")) for e in events if e["EventName"] == "ChampionKill"]
+    out = {side: {"drakes": {}, "soul": None, "timed": []} for side in ("ally", "enemy")}
+    for e in events:
+        if e["EventName"] not in ("DragonKill", "BaronKill"):
+            continue
+        team = name_team.get(e.get("KillerName", "").split("#")[0])
+        if not team:
+            continue
+        side = out["ally" if team == my_team else "enemy"]
+        kind = e.get("DragonType") if e["EventName"] == "DragonKill" else "BaronKill"
+        if kind in BUFFS["dragons"]:
+            side["drakes"][kind] = side["drakes"].get(kind, 0) + 1
+            if sum(side["drakes"].values()) == 4:
+                side["soul"] = BUFFS["dragons"][kind]["nom"]
+            continue
+        buff = BUFFS["timed"].get(kind)
+        t0 = e["EventTime"]
+        if not buff or t0 + buff["duree"] <= now:
+            continue
+        holders = [i for i, p in enumerate(game["allPlayers"]) if p.get("team") == team and not any(
+            v.split("#")[0] in names[i] and t0 - BUFFS["respawn_approx"] <= t <= now for t, v in deaths)]
+        if holders:
+            side["timed"].append({"nom": buff["nom"], "reste": round(t0 + buff["duree"] - now),
+                                  "joueurs": len(holders)})
+    return out
+
+
+def mountain_mult(side):
+    return 1 + side["drakes"].get("Earth", 0) * BUFFS["dragons"]["Earth"]["resist_pct"]
+
+
+def apply_mountain(cs, mult):
+    """Montagne : % d'armure et de RM totales ; le gain compte comme résistance bonus."""
+    for k in ("armor", "mr"):
+        gain = cs[k] * (mult - 1)
+        cs[k] = round(cs[k] + gain)
+        cs[f"bonus_{k}"] = round(cs[f"bonus_{k}"] + gain)
+
+
 def analyse(game, champs, items_db, version):
     ap = game["activePlayer"]
     me = find_me(game)
     if not me:
         raise SystemExit("Impossible de te retrouver dans la liste des joueurs (spectateur ?).")
     st = ap.get("championStats", {})
+    obj = objectives(game, me.get("team"))
     mine_calc = computed_stats(me, champs, items_db)
     if mine_calc:  # shards de PV : visibles seulement pour toi
         mine_calc["hp"] += round(shard_hp(ap, ap.get("level", 1)))
+        apply_mountain(mine_calc, mountain_mult(obj["ally"]))
     out = {
         "patch": version,
         "game_time": round(game.get("gameData", {}).get("gameTime", 0)),
@@ -284,8 +337,10 @@ def analyse(game, champs, items_db, version):
             },
         },
         "enemies": [],
-        "warnings": ["Runes, shards, buffs (dragons, Baron) et passifs à stacks ignorés : "
-                     "résistances ennemies légèrement sous-estimées."],
+        "objectives": obj,
+        "warnings": ["Runes, shards et passifs à stacks ignorés : résistances ennemies légèrement "
+                     "sous-estimées. Drakes Montagne ennemis comptés ; Baron / Ancien affichés, "
+                     "pas dans le calcul (porteurs estimés d'après les kills)."],
     }
     if mine_calc:
         out["me"]["ratios"] = meraki_check(mine_calc["key"])
@@ -296,6 +351,7 @@ def analyse(game, champs, items_db, version):
         if not cs:
             out["warnings"].append(f"Champion inconnu : {p.get('championName')}")
             continue
+        apply_mountain(cs, mountain_mult(obj["enemy"]))
         totals, _ = item_totals(p.get("items", []), items_db)
         sc = p.get("scores", {})
         cs.update({
@@ -325,6 +381,8 @@ UNIT_STAT = {
 }
 # Passifs d'items (V2d) : table éditable à la main, relue à chaque lancement
 PASSIVES = json.loads((Path(__file__).resolve().parent.parent / "passifs.json").read_text(encoding="utf-8"))
+# Drakes, Baron, Ancien (V2e) : valeurs du wiki, éditables à la main
+BUFFS = json.loads((Path(__file__).resolve().parent.parent / "buffs.json").read_text(encoding="utf-8"))
 # Lignes Meraki qui ne sont pas des dégâts sur un champion ennemi
 SKIP_ATTR = ("minion", "monster", "turret", "reduced", "reduction", "clone", "per target death",
              "per stack", "minimum", "per tick", "per hit", "per dagger", "per bullet", "per sphere")
@@ -542,13 +600,16 @@ def combo_damage(me, enemy, lines, n_autos, scale_autos_with_as):
     return sum(v * amp[k] for k, v in dmg.items())
 
 
-def remaining_cost(item_id, owned, items_db):
-    """Prix restant : on retire les composants déjà possédés (chacun compté une fois)."""
+def remaining_cost(item_id, owned, items_db, used=None):
+    """Prix restant : on retire les composants déjà possédés (chacun compté une fois).
+    `used` reçoit les composants possédés qui partent dans la recette."""
     owned = list(owned)
 
     def walk(iid):
         if iid in owned:
             owned.remove(iid)
+            if used is not None:
+                used.append(iid)
             return 0
         it = items_db.get(iid)
         if not it:
@@ -578,6 +639,64 @@ def buy_now(item_id, owned, gold, items_db):
 
 def is_boots(it):
     return "Boots" in it["tags"]
+
+
+# ---------------------------------------------------------------- V2e : inventaire et revente
+INV_SLOTS = 6  # le slot 6 est la balise
+REFILLABLE_POT = 2031
+CONTROL_WARD = 2055
+DARK_SEAL, MEJAI = 1082, 3041
+LATE_LEGENDARIES = 3  # à partir de 3 items complets, potions et starters ne servent plus
+
+
+def is_role_item(db):
+    """Item de support (tag GoldPer) ou familier de jungle (tag Jungle sans Lane : les potions
+    ont les deux) : on ne le vend pas."""
+    tags = set(db["tags"])
+    return "GoldPer" in tags or "Trinket" in tags or ("Jungle" in tags and "Lane" not in tags)
+
+
+def inventory_advice(me_p, top, owned, gold, items_db):
+    """Verdict item par item + l'item à vendre s'il en faut un.
+    prio : 1 = à vendre en premier … 4 = en dernier ; 0 = garde."""
+    used = []
+    if top:
+        remaining_cost(top["id"], owned, items_db, used)
+    inv = [i for i in me_p.get("items", []) if i.get("slot", 0) != INV_SLOTS]
+    legendaries = sum(1 for i in inv if (db := items_db.get(i.get("itemID")))
+                      and db["completed"] and db["price"] >= MIN_LEGENDARY_PRICE and not is_boots(db))
+    late = legendaries >= LATE_LEGENDARIES
+    rows = []
+    for it in inv:
+        iid, db = it.get("itemID"), items_db.get(it.get("itemID"))
+        name = it.get("displayName") or (db and db["name"]) or str(iid)
+        sell = db["sell"] if db else 0
+        if iid in used:
+            prio, why = 0, f"part dans {top['name']}"
+        elif not db or is_role_item(db):
+            prio, why = 0, "item de rôle"
+        elif iid == CONTROL_WARD:
+            prio, why = 2, "ward de contrôle : vends seulement si le slot manque"
+        elif iid == REFILLABLE_POT or it.get("consumable") or "Consumable" in db["tags"]:
+            prio, why = 1, "potion : inutile en fin de game"
+        elif is_boots(db) or (db["completed"] and db["price"] >= MIN_LEGENDARY_PRICE):
+            prio, why = 0, "item complet"
+        elif iid == DARK_SEAL:
+            prio, why = (0, "part dans Mejai") if top and top["id"] == MEJAI else \
+                (4, "garde tes stacks, sauf si le slot manque")
+        else:
+            prio, why = 3, "starter / composant hors de ta prochaine recette"
+        rows.append({"name": name, "id": iid, "sell": sell, "prio": prio, "why": why})
+    # Slot : acheter un composant en prend un ; l'item complet libère ses composants
+    free = INV_SLOTS - len(inv)
+    need = 1 if not used or (top and gold < top["cost"]) else 0
+    sellable = sorted((r for r in rows if r["prio"]), key=lambda r: (r["prio"], r["sell"]))
+    sell, reason = None, None
+    if need > free and sellable:
+        sell, reason = sellable[0], "plus de slot"
+    elif late and sellable and sellable[0]["prio"] in (1, 3):
+        sell, reason = sellable[0], "fin de game, il ne sert plus"
+    return {"rows": rows, "free": free, "late": late, "sell": sell, "reason": reason}
 
 
 # ---------------------------------------------------------------- V2a : style de jeu
@@ -792,8 +911,11 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
         scored.insert(0, best)
     top = scored[0]
     gold = result["me"]["gold"]
-    now = buy_now(top["id"], owned, gold, items_db) if gold < top["cost"] else None
-    return {"top": scored[:3], "buy_now": now, "gold": gold, "lines": lines,
+    inv = inventory_advice(me_p, top, owned, gold, items_db)
+    gold_after = gold + (inv["sell"]["sell"] if inv["sell"] else 0)
+    now = buy_now(top["id"], owned, gold_after, items_db) if gold_after < top["cost"] else None
+    return {"top": scored[:3], "buy_now": now, "gold": gold, "gold_after": gold_after, "inv": inv,
+            "objectives": result["objectives"], "lines": lines,
             "style": style, "dmg": dmg, "why": why, "meta_note": meta_note, "spell_onhit": spell_onhit,
             "meta_patch": meta["patch"] if meta else None,
             "ignored_units": ignored_units, "n_autos": n_autos,
@@ -817,20 +939,47 @@ def fmt_reco(r):
         what = f"+{t['gain_dmg']:.0%} de dégâts et +{t['gain_tank']:.0%} de tankiness"
     line = f"→ {t['name']} : {what}"
     line += f", surtout contre {' et '.join(strong)}." if strong else "."
+    sell = r["inv"]["sell"]
+    if sell:
+        line += f" Vends {sell['name']} (+{sell['sell']} PO, {r['inv']['reason']})."
     if r["buy_now"]:
         line += f" (achetable maintenant : {r['buy_now']['name']}, {r['buy_now']['price']} PO)"
-    elif r["gold"] < t["cost"]:
-        line += f" (il te manque {t['cost'] - r['gold']} PO)"
+    elif r["gold_after"] < t["cost"]:
+        line += f" (il te manque {t['cost'] - r['gold_after']} PO)"
     meta = r["meta_note"] if r["meta_note"].startswith("méta ") and ":" not in r["meta_note"] \
         else "sans méta"
-    return line + f" [{STYLE_LABEL[r['style']]} {r['dmg'].upper()} · {r['why']} · {meta}]"
+    line += f" [{STYLE_LABEL[r['style']]} {r['dmg'].upper()} · {r['why']} · {meta}]"
+    # Buffs ennemis qui changent le fight maintenant
+    for b in r["objectives"]["enemy"]["timed"]:
+        line += f" ⚠ {b['nom']} ennemi encore {b['reste'] // 60}:{b['reste'] % 60:02d} ({b['joueurs']} joueurs)"
+    return line
+
+
+def fmt_objectives(obj):
+    def side(s):
+        d = ", ".join(f"{BUFFS['dragons'][k]['nom']} x{n}" for k, n in s["drakes"].items()) or "aucun drake"
+        if s["soul"]:
+            d += f" · âme {s['soul']}"
+        for b in s["timed"]:
+            d += f" · {b['nom']} {b['reste'] // 60}:{b['reste'] % 60:02d} ({b['joueurs']} joueurs)"
+        return d
+    return f"OBJECTIFS : toi {side(obj['ally'])} | eux {side(obj['enemy'])}"
+
+
+def fmt_inventory(inv):
+    L = [f"INVENTAIRE ({inv['free']} slot(s) libre(s){', fin de game' if inv['late'] else ''})"]
+    for row in inv["rows"]:
+        verdict = "garde" if not row["prio"] else f"vendable +{row['sell']} PO"
+        L.append(f"  {row['name']} : {verdict} ({row['why']})")
+    return "\n".join(L)
 
 
 def fmt_reco_details(r):
     if "error" in r:
         return ""
     wd, wt = STYLE_WEIGHTS[r["style"]]
-    L = [f"\nSTYLE : {STYLE_LABEL[r['style']]} {r['dmg'].upper()} ({r['why']}) · score = "
+    L = ["\n" + fmt_objectives(r["objectives"]), fmt_inventory(r["inv"]),
+         f"\nSTYLE : {STYLE_LABEL[r['style']]} {r['dmg'].upper()} ({r['why']}) · score = "
          f"{wd:.0%} dégâts + {wt:.0%} tankiness (PV effectifs face au mix AD/AP adverse)",
          f"MÉTA : {r['meta_note']}" + (f" (OP.GG patch {r['meta_patch']}, Émeraude+)" if r["meta_patch"] else ""),
          "TOP 3 (rentabilité = % de score gagné pour 1000 PO ; pick = joué dans x % des parties)"]

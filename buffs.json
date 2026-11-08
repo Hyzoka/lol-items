@@ -1,0 +1,18 @@
+{
+ "_source": "wiki.leagueoflegends.com/en-us/Dragon_Slayer (relu le 2026-11-08). À corriger à la main si un patch change une valeur.",
+ "_note": "DragonType de l'API live -> buff par stack. Seul resist_pct (Montagne) entre dans le calcul ; le reste est affiché.",
+ "dragons": {
+  "Earth": {"nom": "Montagne", "resist_pct": 0.05},
+  "Fire": {"nom": "Infernal", "ad_ap_pct": 0.03},
+  "Water": {"nom": "Océan"},
+  "Air": {"nom": "Nuage"},
+  "Hextech": {"nom": "Hextech"},
+  "Chemtech": {"nom": "Chimtech"}
+ },
+ "timed": {
+  "BaronKill": {"nom": "Baron", "duree": 180},
+  "Elder": {"nom": "Ancien", "duree": 150}
+ },
+ "_respawn_approx": "un joueur tué moins de 45 s avant l'objectif est compté mort (pas de buff)",
+ "respawn_approx": 45
+}
