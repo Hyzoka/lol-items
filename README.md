@@ -22,7 +22,7 @@ It reads your live game (your champion, gold, items, and the enemy team's champi
 
 Your style is inferred from your keystone rune (Conqueror → bruiser, Grasp / Aftershock → tank, Electrocute, Comet… → damage), then from the champion's role. You can force it.
 
-**Gold gap:** the output line shows your team's item-value gap. When your team is 3k+ behind, survivability weighs at least 25% of the score (50% at 6k+), so items like Zhonya's can come up even in damage style. Zhonya's stasis is modelled as a flat +25% effective HP (an estimate, not Riot data).
+**Game state:** the survivability weight follows the game. +5 points per 1k gold your team is behind, +10 points per 1k gold the most fed enemy is above the 10-player average (capped at 60%); when you're ahead, it drops 10% of your style's base per 1k (never below half). The output line shows it (`team −0.2k g, Yunara fed +3.0k, survival 32%`), so items like Zhonya's can come up even in damage style. Components of any top-3 item are never suggested for sale. Zhonya's stasis is modelled as a flat +25% effective HP (an estimate, not Riot data).
 
 **Not modelled:** enemy runes and stat shards; Baron / Elder are flagged but not in the damage calculation (holders are estimated from kill events); Dark Seal stacks aren't exposed by the API. Every number comes from the live API, Data Dragon, or the script's own calculation; nothing is made up.
 

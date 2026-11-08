@@ -662,12 +662,19 @@ def is_role_item(db):
     return "GoldPer" in tags or "Trinket" in tags or ("Jungle" in tags and "Lane" not in tags)
 
 
-def inventory_advice(me_p, top, owned, gold, items_db):
+def inventory_advice(me_p, top, owned, gold, items_db, others=()):
     """Verdict item par item + l'item à vendre s'il en faut un.
-    prio : 1 = à vendre en premier … 4 = en dernier ; 0 = garde."""
+    prio : 1 = à vendre en premier … 4 = en dernier ; 0 = garde.
+    `others` : les autres items du top 3, dont on ne vend pas les composants."""
     used = []
     if top:
         remaining_cost(top["id"], owned, items_db, used)
+    later = {}
+    for o in others:
+        comps = []
+        remaining_cost(o["id"], owned, items_db, comps)
+        for c in comps:
+            later.setdefault(c, o["name"])
     inv = [i for i in me_p.get("items", []) if i.get("slot", 0) != INV_SLOTS]
     legendaries = sum(1 for i in inv if (db := items_db.get(i.get("itemID")))
                       and db["completed"] and db["price"] >= MIN_LEGENDARY_PRICE and not is_boots(db))
@@ -679,6 +686,8 @@ def inventory_advice(me_p, top, owned, gold, items_db):
         sell = db["sell"] if db else 0
         if iid in used:
             prio, why = 0, f"part dans {top['name']}"
+        elif iid in later:
+            prio, why = 0, f"part dans {later[iid]} (top 3)"
         elif not db or is_role_item(db):
             prio, why = 0, "item de rôle"
         elif iid == CONTROL_WARD:
@@ -724,8 +733,24 @@ PRIMARY = {"ap": {"ap", "magic_pen_flat", "magic_pen_pct"},
            "ad": {"ad", "lethality", "armor_pen_pct", "crit"}}
 DEFENSE = {"hp", "armor", "mr"}
 STYLE_LABEL = {"degats": "dégâts", "bruiser": "bruiser", "tank": "tank"}
-# Retard en valeur d'items (PO) -> poids minimum de la survie dans le score (estimation, à ajuster)
-BEHIND_TANK = [(6000, 0.5), (3000, 0.25)]
+# État de la game -> poids de la survie (estimations, à ajuster avec les games) :
+# +5 pts par 1k PO de retard d'équipe, +10 pts par 1k PO d'avance du carry adverse le plus fed
+# sur la moyenne des 10 joueurs ; en avance, -10 % du poids de base par 1k (jamais sous la moitié)
+TANK_PER_K_BEHIND = 0.05
+TANK_PER_K_FED = 0.10
+AHEAD_CUT_PER_K = 0.10
+TANK_MAX = 0.6
+
+
+def survival_weight(base, team_gold, enemies, n_players):
+    """Poids de la survie selon l'écart d'équipe et le carry adverse le plus fed."""
+    gap_k = (team_gold["ally"] - team_gold["enemy"]) / 1000
+    mean = (team_gold["ally"] + team_gold["enemy"]) / max(1, n_players)
+    fed = max(enemies, key=lambda e: e["item_gold"], default=None)
+    fed_k = max(0.0, (fed["item_gold"] - mean) / 1000) if fed else 0.0
+    w = base * max(0.5, 1 - AHEAD_CUT_PER_K * gap_k) if gap_k > 0 else base - TANK_PER_K_BEHIND * gap_k
+    w = min(TANK_MAX, w + TANK_PER_K_FED * fed_k)
+    return w, (fed["champion"] if fed_k >= 1 else None), fed_k
 
 
 def pick_style(ap_live, champ, meraki, owned, items_db, style_arg, dmg_arg):
@@ -845,11 +870,11 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     me["item_hp"] = item_totals([{"itemID": i} for i in owned], items_db)[0].get("hp", 0)
     style, dmg, why = pick_style(ap_live, champ, meraki, owned, items_db, style_arg, dmg_arg)
     w_dmg, w_tank = STYLE_WEIGHTS[style]
-    # Équipe en retard : la survie entre dans le score, même en style dégâts
+    # La survie suit la game : retard d'équipe et carry adverse fed la montent, l'avance la baisse
     gap = result["team_gold"]["ally"] - result["team_gold"]["enemy"]
-    behind = next((w for seuil, w in BEHIND_TANK if -gap >= seuil), 0.0)
-    if behind > w_tank:
-        w_dmg, w_tank = 1 - behind, behind
+    w_tank, fed, fed_k = survival_weight(w_tank, result["team_gold"], result["enemies"],
+                                         len(game["allPlayers"]))
+    w_dmg = 1 - w_tank
 
     # Candidats selon le style : un item qui n'apporte rien à ton style ne sort pas
     offense = OFFENSE[dmg]
@@ -926,11 +951,11 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
         scored.insert(0, best)
     top = scored[0]
     gold = result["me"]["gold"]
-    inv = inventory_advice(me_p, top, owned, gold, items_db)
+    inv = inventory_advice(me_p, top, owned, gold, items_db, scored[1:3])
     gold_after = gold + (inv["sell"]["sell"] if inv["sell"] else 0)
     now = buy_now(top["id"], owned, gold_after, items_db) if gold_after < top["cost"] else None
     return {"top": scored[:3], "buy_now": now, "gold": gold, "gold_after": gold_after, "inv": inv,
-            "objectives": result["objectives"], "lines": lines, "gap": gap, "w": (w_dmg, w_tank),
+            "objectives": result["objectives"], "lines": lines, "gap": gap, "w": (w_dmg, w_tank), "fed": fed, "fed_k": fed_k,
             "style": style, "dmg": dmg, "why": why, "meta_note": meta_note, "spell_onhit": spell_onhit,
             "meta_patch": meta["patch"] if meta else None,
             "ignored_units": ignored_units, "n_autos": n_autos,
@@ -965,8 +990,9 @@ def fmt_reco(r):
     meta = r["meta_note"] if r["meta_note"].startswith("méta ") and ":" not in r["meta_note"] \
         else "sans méta"
     gap = f"{'+' if r['gap'] >= 0 else '−'}{abs(r['gap']) / 1000:.1f}k PO"
-    survie = f", survie {w_tank:.0%}" if w_tank > STYLE_WEIGHTS[r["style"]][1] else ""
-    line += f" [{STYLE_LABEL[r['style']]} {r['dmg'].upper()} · {r['why']} · {meta} · équipe {gap}{survie}]"
+    survie = f", survie {w_tank:.0%}" if round(w_tank, 2) != STYLE_WEIGHTS[r["style"]][1] else ""
+    fed = f", {r['fed']} fed +{r['fed_k']:.1f}k" if r["fed"] else ""
+    line += f" [{STYLE_LABEL[r['style']]} {r['dmg'].upper()} · {r['why']} · {meta} · équipe {gap}{fed}{survie}]"
     # Buffs ennemis qui changent le fight maintenant
     for b in r["objectives"]["enemy"]["timed"]:
         line += f" ⚠ {b['nom']} ennemi encore {b['reste'] // 60}:{b['reste'] % 60:02d} ({b['joueurs']} joueurs)"
