@@ -320,6 +320,7 @@ def analyse(game, champs, items_db, version):
             "key": mine_calc["key"] if mine_calc else None,
             "level": ap.get("level"),
             "gold": round(ap.get("currentGold", 0)),
+            "item_gold": mine_calc["item_gold"] if mine_calc else 0,
             "abilities": {k: v.get("abilityLevel", 0) for k, v in ap.get("abilities", {}).items()
                           if k in ("Q", "W", "E", "R")},
             "items": [i.get("displayName") for i in me.get("items", [])],
@@ -748,13 +749,16 @@ TANK_MAX = 0.6
 TANK_PER_NET_DEATH = 0.05   # +5 pts par mort de plus que tes kills (tu te fais focus)
 FED_K_PER_NET_KILL = 0.15   # un kill net d'un ennemi = +0.15k d'avance (shutdown, tempo)
 TANK_PER_BURST = 0.05       # +5 pts par assassin adverse pas en retard (stuff ≥ moyenne de son équipe)
+TANK_PER_NET_KILL = 0.02    # −2 pts par kill de plus que tes morts (tu domines : moins de survie)
 
 
-def survival_weight(base, team_gold, enemies, n_players, my_scores=None):
+def survival_weight(base, team_gold, enemies, n_players, my_scores=None, my_gold=0):
     """Poids de la survie selon l'écart d'équipe, le carry adverse le plus fed (gold d'items
-    + kills nets), tes morts et les assassins adverses. Renvoie aussi le détail, pour --details."""
+    + kills nets, comparé à ton stuff s'il est au-dessus de la moyenne), tes kills / morts et
+    les assassins adverses. Renvoie aussi le détail, pour --details."""
     gap_k = (team_gold["ally"] - team_gold["enemy"]) / 1000
-    mean = (team_gold["ally"] + team_gold["enemy"]) / max(1, n_players)
+    # Un ennemi n'est « fed » que s'il a plus de stuff que toi (si tu es au-dessus de la moyenne)
+    mean = max((team_gold["ally"] + team_gold["enemy"]) / max(1, n_players), my_gold)
 
     def fed_score(e):
         return (e["item_gold"] - mean) / 1000 + FED_K_PER_NET_KILL * max(0, e.get("kills", 0) - e.get("deaths", 0))
@@ -764,13 +768,14 @@ def survival_weight(base, team_gold, enemies, n_players, my_scores=None):
     why = {"équipe": w - base}
     why["fed"] = TANK_PER_K_FED * fed_k
     sc = my_scores or {}
-    net_deaths = max(0, sc.get("deaths", 0) - sc.get("kills", 0))
-    why["tes morts"] = TANK_PER_NET_DEATH * net_deaths
+    net = sc.get("kills", 0) - sc.get("deaths", 0)
+    why["tes morts"] = TANK_PER_NET_DEATH * max(0, -net)
+    why["tes kills"] = -TANK_PER_NET_KILL * max(0, net)
     enemy_mean = sum(e["item_gold"] for e in enemies) / len(enemies) if enemies else 0
     burst = [e["champion"] for e in enemies
              if threat_class(e["class"]) == "Assassin" and e["item_gold"] >= enemy_mean]
     why["assassins"] = TANK_PER_BURST * len(burst)
-    w = min(TANK_MAX, base + sum(why.values()))
+    w = min(TANK_MAX, max(0.0, base + sum(why.values())))
     return w, (fed["champion"] if fed_k >= 1 else None), fed_k, {"why": why, "burst": burst}
 
 
@@ -908,7 +913,8 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     # La survie suit la game : retard d'équipe et carry adverse fed la montent, l'avance la baisse
     gap = result["team_gold"]["ally"] - result["team_gold"]["enemy"]
     w_tank, fed, fed_k, surv = survival_weight(w_tank, result["team_gold"], result["enemies"],
-                                               len(game["allPlayers"]), me_p.get("scores"))
+                                               len(game["allPlayers"]), me_p.get("scores"),
+                                               result["me"].get("item_gold", 0))
     w_dmg = 1 - w_tank
 
     # Candidats selon le style : un item qui n'apporte rien à ton style ne sort pas
