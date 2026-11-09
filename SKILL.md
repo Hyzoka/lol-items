@@ -7,7 +7,9 @@ description: Pendant une partie de League of Legends, lit la game en cours (cham
 
 Réponds en français, ton informel, **très court** : le joueur est en pleine game (alt-tab, souvent au retour en base).
 
-**Statut : V2e** (un item en une phrase, adapté à ton style : dégâts / bruiser / tank, parmi les items réellement joués sur ton champion dans ta lane (OP.GG), passifs des ~30 items clés compris : `passifs.json`. Plus : quel item vendre s'il manque un slot ou en fin de game, drakes Montagne ennemis comptés, Baron / Ancien ennemi actif signalé : `buffs.json`).
+**Statut : V2g** (build adapté à la game : la part survie monte avec tes morts, l'ennemi le plus fed et les assassins adverses ; stase de la Zhonya pondérée selon la menace)
+
+**Avant : V2e** (un item en une phrase, adapté à ton style : dégâts / bruiser / tank, parmi les items réellement joués sur ton champion dans ta lane (OP.GG), passifs des ~30 items clés compris : `passifs.json`. Plus : quel item vendre s'il manque un slot ou en fin de game, drakes Montagne ennemis comptés, Baron / Ancien ennemi actif signalé : `buffs.json`).
 
 ## Contraintes
 - L'API live de Riot (`https://127.0.0.1:2999`) n'existe que **sur le PC de jeu, pendant une partie** (entraînement compris). Depuis l'app Claude ou l'iPhone, la skill ne peut pas tourner : dis-le en une ligne.

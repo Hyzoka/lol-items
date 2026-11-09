@@ -364,6 +364,7 @@ def analyse(game, champs, items_db, version):
             "champion": p.get("championName"),
             "position": p.get("position") or "",
             "kda": f"{sc.get('kills', 0)}/{sc.get('deaths', 0)}/{sc.get('assists', 0)}",
+            "kills": sc.get("kills", 0), "deaths": sc.get("deaths", 0),
             "cs": sc.get("creepScore", 0),
             "ad_share": damage_profile(totals),
             "items": [i.get("displayName") for i in p.get("items", [])],
@@ -702,9 +703,12 @@ def inventory_advice(me_p, top, owned, gold, items_db, others=()):
         else:
             prio, why = 3, "starter / composant hors de ta prochaine recette"
         rows.append({"name": name, "id": iid, "sell": sell, "prio": prio, "why": why})
-    # Slot : acheter un composant en prend un ; l'item complet libère ses composants
+    # Slot : acheter un composant en prend un ; l'item complet libère ses composants.
+    # Composants tous possédés (reste = prix de la recette) : rien à acheter entre-temps, pas de slot
     free = INV_SLOTS - len(inv)
-    need = 1 if not used or (top and gold < top["cost"]) else 0
+    recipe = top["price"] - sum(items_db[c]["price"] for c in items_db.get(top["id"], {}).get("from", [])
+                                if c in items_db) if top else 0
+    need = 1 if not used or (top and gold < top["cost"] and top["cost"] > recipe) else 0
     sellable = sorted((r for r in rows if r["prio"]), key=lambda r: (r["prio"], r["sell"]))
     sell, reason = None, None
     if need > free and sellable:
@@ -740,17 +744,34 @@ TANK_PER_K_BEHIND = 0.05
 TANK_PER_K_FED = 0.10
 AHEAD_CUT_PER_K = 0.10
 TANK_MAX = 0.6
+# V2g (GAM-001) : ta game et le type de menace, pas seulement le gold
+TANK_PER_NET_DEATH = 0.05   # +5 pts par mort de plus que tes kills (tu te fais focus)
+FED_K_PER_NET_KILL = 0.15   # un kill net d'un ennemi = +0.15k d'avance (shutdown, tempo)
+TANK_PER_BURST = 0.05       # +5 pts par assassin adverse pas en retard (stuff ≥ moyenne de son équipe)
 
 
-def survival_weight(base, team_gold, enemies, n_players):
-    """Poids de la survie selon l'écart d'équipe et le carry adverse le plus fed."""
+def survival_weight(base, team_gold, enemies, n_players, my_scores=None):
+    """Poids de la survie selon l'écart d'équipe, le carry adverse le plus fed (gold d'items
+    + kills nets), tes morts et les assassins adverses. Renvoie aussi le détail, pour --details."""
     gap_k = (team_gold["ally"] - team_gold["enemy"]) / 1000
     mean = (team_gold["ally"] + team_gold["enemy"]) / max(1, n_players)
-    fed = max(enemies, key=lambda e: e["item_gold"], default=None)
-    fed_k = max(0.0, (fed["item_gold"] - mean) / 1000) if fed else 0.0
+
+    def fed_score(e):
+        return (e["item_gold"] - mean) / 1000 + FED_K_PER_NET_KILL * max(0, e.get("kills", 0) - e.get("deaths", 0))
+    fed = max(enemies, key=fed_score, default=None)
+    fed_k = max(0.0, fed_score(fed)) if fed else 0.0
     w = base * max(0.5, 1 - AHEAD_CUT_PER_K * gap_k) if gap_k > 0 else base - TANK_PER_K_BEHIND * gap_k
-    w = min(TANK_MAX, w + TANK_PER_K_FED * fed_k)
-    return w, (fed["champion"] if fed_k >= 1 else None), fed_k
+    why = {"équipe": w - base}
+    why["fed"] = TANK_PER_K_FED * fed_k
+    sc = my_scores or {}
+    net_deaths = max(0, sc.get("deaths", 0) - sc.get("kills", 0))
+    why["tes morts"] = TANK_PER_NET_DEATH * net_deaths
+    enemy_mean = sum(e["item_gold"] for e in enemies) / len(enemies) if enemies else 0
+    burst = [e["champion"] for e in enemies
+             if threat_class(e["class"]) == "Assassin" and e["item_gold"] >= enemy_mean]
+    why["assassins"] = TANK_PER_BURST * len(burst)
+    w = min(TANK_MAX, base + sum(why.values()))
+    return w, (fed["champion"] if fed_k >= 1 else None), fed_k, {"why": why, "burst": burst}
 
 
 def pick_style(ap_live, champ, meraki, owned, items_db, style_arg, dmg_arg):
@@ -828,15 +849,29 @@ def meta_items(champ, live_position, lane_arg):
     return {"lane": lane, "pick": pick, "patch": d.get("meta", {}).get("version")}
 
 
-def ehp(me, share):
+# Valeur de la stase selon la classe de l'ennemi : contre un burst, 2,5 s d'invulnérabilité
+# esquivent le combo ; contre un DPS soutenu, elles ne font que retarder (estimations)
+STASIS_VS = {"Assassin": 1.6, "Mage": 1.0, "Marksman": 0.4}
+STASIS_VS_DEFAULT = 0.8
+
+
+def threat_class(tags):
+    """Classe de menace d'un champion : tireur d'abord (Vayne est aussi taguée Assassin),
+    puis assassin (Kayn, Sylas), puis mage."""
+    return next((c for c in ("Marksman", "Assassin", "Mage") if c in tags), None)
+
+
+def ehp(me, share, classes=()):
     """PV effectifs face à un ennemi dont `share` des dégâts sont physiques.
-    Passifs défensifs en combat : Jak'Sho (résistances bonus), Force de la nature (RM), Rookern (bouclier)."""
+    Passifs défensifs en combat : Jak'Sho (résistances bonus), Force de la nature (RM), Rookern (bouclier).
+    La stase (Zhonya) compte plus contre un assassin que contre un tireur (`classes` : tags Data Dragon)."""
     armor, mr, shield, stasis = me["armor"], me["mr"], 0.0, 0.0
+    vs = STASIS_VS.get(threat_class(classes), STASIS_VS_DEFAULT)
     for e in (e for iid in me["items"] for e in item_effects(iid) if e["type"] == "def"):
         armor += e.get("bonus_resist_mult", 0) * me["bonus_armor"]
         mr += e.get("bonus_resist_mult", 0) * me["bonus_mr"] + e.get("mr", 0)
         shield += e.get("magic_shield_hp", 0) * me["hp"]
-        stasis += e.get("stasis_ehp_pct", 0)  # Zhonya : forfait, voir passifs.json
+        stasis += e.get("stasis_ehp_pct", 0) * vs  # Zhonya : forfait, voir passifs.json
     return (1 + stasis) * (share * me["hp"] * (1 + armor / 100)
                            + (1 - share) * (me["hp"] + shield) * (1 + mr / 100))
 
@@ -872,8 +907,8 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     w_dmg, w_tank = STYLE_WEIGHTS[style]
     # La survie suit la game : retard d'équipe et carry adverse fed la montent, l'avance la baisse
     gap = result["team_gold"]["ally"] - result["team_gold"]["enemy"]
-    w_tank, fed, fed_k = survival_weight(w_tank, result["team_gold"], result["enemies"],
-                                         len(game["allPlayers"]))
+    w_tank, fed, fed_k, surv = survival_weight(w_tank, result["team_gold"], result["enemies"],
+                                               len(game["allPlayers"]), me_p.get("scores"))
     w_dmg = 1 - w_tank
 
     # Candidats selon le style : un item qui n'apporte rien à ton style ne sort pas
@@ -918,7 +953,8 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     w_sum = sum(e["threat"] for e in enemies) or 1.0
     base_dmg = {e["champion"]: combo_damage(me, e, lines, n_autos, marksman) for e in enemies}
     shares = {e["champion"]: enemy_ad_share(e, champs) for e in enemies}
-    base_ehp = {c: ehp(me, s) for c, s in shares.items()}
+    classes = {e["champion"]: e["class"] for e in enemies}
+    base_ehp = {c: ehp(me, s, classes[c]) for c, s in shares.items()}
 
     def wmean(d):
         return sum(e["threat"] * d[e["champion"]] for e in enemies) / w_sum
@@ -930,7 +966,7 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
         for e in enemies:
             c, before = e["champion"], base_dmg[e["champion"]]
             g_dmg[c] = (combo_damage(m2, e, lines, n_autos, marksman) - before) / before if before else 0.0
-            g_tank[c] = ehp(m2, shares[c]) / base_ehp[c] - 1
+            g_tank[c] = ehp(m2, shares[c], classes[c]) / base_ehp[c] - 1
         per_enemy = {c: w_dmg * g_dmg[c] + w_tank * g_tank[c] for c in g_dmg}
         gain = wmean(per_enemy)
         if gain <= 0:
@@ -956,6 +992,7 @@ def recommend(game, champs, items_db, result, style_arg=None, dmg_arg=None, lane
     now = buy_now(top["id"], owned, gold_after, items_db) if gold_after < top["cost"] else None
     return {"top": scored[:3], "buy_now": now, "gold": gold, "gold_after": gold_after, "inv": inv,
             "objectives": result["objectives"], "lines": lines, "gap": gap, "w": (w_dmg, w_tank), "fed": fed, "fed_k": fed_k,
+            "surv": surv,
             "style": style, "dmg": dmg, "why": why, "meta_note": meta_note, "spell_onhit": spell_onhit,
             "meta_patch": meta["patch"] if meta else None,
             "ignored_units": ignored_units, "n_autos": n_autos,
@@ -1025,6 +1062,10 @@ def fmt_reco_details(r):
     L = ["\n" + fmt_objectives(r["objectives"]), fmt_inventory(r["inv"]),
          f"\nSTYLE : {STYLE_LABEL[r['style']]} {r['dmg'].upper()} ({r['why']}) · score = "
          f"{wd:.0%} dégâts + {wt:.0%} tankiness (PV effectifs face au mix AD/AP adverse)",
+         "SURVIE : base " + f"{STYLE_WEIGHTS[r['style']][1]:.0%} · " + " · ".join(
+             f"{k} {v:+.0%}" for k, v in r["surv"]["why"].items() if round(v, 2))
+         + (f" (assassins : {', '.join(r['surv']['burst'])})" if r["surv"]["burst"] else "")
+         + f" → {wt:.0%} (plafond {TANK_MAX:.0%})",
          f"MÉTA : {r['meta_note']}" + (f" (OP.GG patch {r['meta_patch']}, Émeraude+)" if r["meta_patch"] else ""),
          "TOP 3 (rentabilité = % de score gagné pour 1000 PO ; pick = joué dans x % des parties)"]
     for i, t in enumerate(r["top"], 1):
